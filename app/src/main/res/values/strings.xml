@@ -3,11 +3,14 @@
     <string name="start_property">start</string>
     <string name="end_property">end</string>
     <string name="cpuActivePower_property">cpuActivePower</string>
-    <string name="_property">wifiActivePower</string>
+    <string name="wifiActivePower_property">wifiActivePower</string>
     <string name="mobileActivePower_property">mobileActivePower</string>
     <string name="cpu_property">cpu</string>
     <string name="totalPercentage_property">total%</string>
     <string name="longitude_property">longitude</string>
     <string name="latitude_property">latitude</string>
     <string name="runningProcesses">runningProcesses</string>
+    <string name="batteryState">batteryState%</string>
+    <string name="isCharging">isCharging</string>
+    <string name="batteryUsed">batteryUsed%</string>
 </resources>

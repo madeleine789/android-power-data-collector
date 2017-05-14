@@ -1,12 +1,15 @@
 package pl.edu.agh.sm.powerdatacollector;
 
 import android.app.IntentService;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationManager;
+import android.os.BatteryManager;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
@@ -42,6 +45,7 @@ public class DataCollectingService extends IntentService {
 
     private static CpuInfo previousCpuInfo = new CpuInfo(0, 0);
     private static long previousMeasurementMillis;
+    private static float prevBatteryState = 0.0f;
 
     private LocationManager mLocationManager = null;
     private static final int LOCATION_INTERVAL = 10000;
@@ -51,6 +55,40 @@ public class DataCollectingService extends IntentService {
     public DataCollectingService() {
         super("DataCollectingService");
     }
+
+    private BroadcastReceiver mBatInfoReceiver = new BroadcastReceiver(){
+        @Override
+        public void onReceive(Context ctx, Intent batteryStatus) {
+            int status = batteryStatus.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+
+            boolean isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                    status == BatteryManager.BATTERY_STATUS_FULL;
+
+            int chargePlug = batteryStatus.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1);
+            boolean usbCharge = chargePlug == BatteryManager.BATTERY_PLUGGED_USB;
+            boolean acCharge = chargePlug == BatteryManager.BATTERY_PLUGGED_AC;
+
+            int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+            int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+
+            float batteryPct = level / (float)scale;
+
+            Log.i("Battery", "isCharging" + isCharging);
+            float used = 0.0f;
+            if (prevBatteryState == 0.0f) {
+                prevBatteryState = batteryPct;
+            } else {
+                used = prevBatteryState - batteryPct;
+                prevBatteryState = batteryPct;
+            }
+            SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
+            SharedPreferences.Editor editor = sharedPref.edit();
+            editor.putString(getString(R.string.batteryState), String.valueOf(batteryPct * 100));
+            editor.putString(getString(R.string.batteryUsed), String.valueOf((used * 100)));
+            editor.putString(getString(R.string.isCharging), String.valueOf(isCharging));
+            editor.commit();
+        }
+    };
 
 
     private class LocationListener implements android.location.LocationListener {
@@ -136,6 +174,8 @@ public class DataCollectingService extends IntentService {
         } catch (IllegalArgumentException ex) {
             Log.d(TAG, "gps provider does not exist " + ex.getMessage());
         }
+
+        this.registerReceiver(this.mBatInfoReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
     }
 
     @Override
@@ -180,6 +220,7 @@ public class DataCollectingService extends IntentService {
                 }
             }
         }
+        this.unregisterReceiver(this.mBatInfoReceiver);
     }
 
     private void saveMeasurements() {
@@ -196,8 +237,12 @@ public class DataCollectingService extends IntentService {
         sb.append("cpu=").append(preferences.getString(getString(R.string.cpu_property), "")).append("\n");
         sb.append("total%=").append(preferences.getString(getString(R.string.totalPercentage_property), "")).append("\n");
         sb.append("cpuActivePower=").append(preferences.getString(getString(R.string.cpuActivePower_property), "")).append("\n");
+        sb.append("wifiActivePower=").append(preferences.getString(getString(R.string.wifiActivePower_property), "")).append("\n");
         sb.append("mobileActivePower=").append(preferences.getString(getString(R.string.mobileActivePower_property), "")).append("\n");
-        sb.append("runningApps=").append(preferences.getString(getString(R.string.runningProcesses), ""));
+        sb.append("runningApps=").append(preferences.getString(getString(R.string.runningProcesses), "")).append("\n");
+        sb.append("isCharging=").append(preferences.getString(getString(R.string.isCharging), "")).append("\n");
+        sb.append("batteryState%=").append(preferences.getString(getString(R.string.batteryState), "")).append("\n");
+        sb.append("batteryUsed%=").append(preferences.getString(getString(R.string.batteryUsed), "")).append("\n");
         FileOutputStream outputStream;
         File file = new File(dir, filename);
         try {
@@ -258,7 +303,7 @@ public class DataCollectingService extends IntentService {
             editor.putString(getString(R.string.start_property), String.valueOf(previousMeasurementMillis));
             editor.putString(getString(R.string.end_property), String.valueOf(System.currentTimeMillis()));
             editor.putString(getString(R.string.cpuActivePower_property), String.valueOf(getAveragePower("cpu.active", 3)));
-            editor.putString(getString(R.string._property), String.valueOf(getAveragePower("wifi.active")));
+            editor.putString(getString(R.string.wifiActivePower_property), String.valueOf(getAveragePower("wifi.active")));
             editor.putString(getString(R.string.mobileActivePower_property), String.valueOf(getAveragePower("radio.active")));
             editor.putString(getString(R.string.cpu_property), String.valueOf(cpuDrainMAh));
             editor.putString(getString(R.string.totalPercentage_property), String.valueOf((cpuDrainMAh / getAveragePower("battery.capacity") * 100)));
