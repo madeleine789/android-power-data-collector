@@ -45,7 +45,6 @@ public class DataCollectingService extends IntentService {
 
     private static CpuInfo previousCpuInfo = new CpuInfo(0, 0);
     private static long previousMeasurementMillis;
-    private static float prevBatteryState = 0.0f;
 
     private LocationManager mLocationManager = null;
     private static final int LOCATION_INTERVAL = 10000;
@@ -74,17 +73,15 @@ public class DataCollectingService extends IntentService {
             float batteryPct = level / (float)scale;
 
             Log.i("Battery", "isCharging" + isCharging);
-            float used = 0.0f;
-            if (prevBatteryState == 0.0f) {
-                prevBatteryState = batteryPct;
-            } else {
-                used = prevBatteryState - batteryPct;
-                prevBatteryState = batteryPct;
-            }
             SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
+            float used;
+            float prevBatteryState = Float.valueOf(sharedPref.getString(getString(R.string.batteryState), "0"));
+            used = prevBatteryState - (batteryPct*100);
+            used = (used < 0) ? 0.0f : used;
+
             SharedPreferences.Editor editor = sharedPref.edit();
             editor.putString(getString(R.string.batteryState), String.valueOf(batteryPct * 100));
-            editor.putString(getString(R.string.batteryUsed), String.valueOf((used * 100)));
+            editor.putString(getString(R.string.batteryUsed), String.valueOf((used)));
             editor.putString(getString(R.string.isCharging), String.valueOf(isCharging));
             editor.commit();
         }
