@@ -25,6 +25,7 @@ import android.widget.Toast;
 
 import com.jaredrummler.android.processes.AndroidProcesses;
 import com.jaredrummler.android.processes.models.AndroidAppProcess;
+import com.jaredrummler.android.processes.models.AndroidProcess;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -273,7 +274,7 @@ public class DataCollectingService extends IntentService {
 
     void startMeasurements() {
         try {
-            previousCpuInfo = readCpuInfo();
+            previousCpuInfo = readCpuInfoForAllApps();
             previousMeasurementMillis = System.currentTimeMillis();
         } catch (Exception e) {
             Log.e(TAG, "startMeasurements: ", e);
@@ -284,7 +285,7 @@ public class DataCollectingService extends IntentService {
         SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
         SharedPreferences.Editor editor = sharedPref.edit();
         try {
-            CpuInfo nextCpuInfo = readCpuInfo();
+            CpuInfo nextCpuInfo = readCpuInfoForAllApps();
             double cpuDrainMAh = 0;
             if (nextCpuInfo != null) {
                 long cpuActiveTime = nextCpuInfo.activeTime - previousCpuInfo.activeTime;
@@ -356,6 +357,35 @@ public class DataCollectingService extends IntentService {
         long idleTimeTicks = processUptimeTicks - activeTimeTicks;
 
         return new CpuInfo(activeTimeTicks, idleTimeTicks);
+    }
+
+    CpuInfo readCpuInfoForAllApps() throws Exception {
+        List<AndroidProcess> runningAppProcessInfo = AndroidProcesses.getRunningProcesses();
+        long active = 0;
+        long idle = 0;
+        for (AndroidProcess appProcess : runningAppProcessInfo) {
+            try {
+                RandomAccessFile reader = new RandomAccessFile("/proc/" + appProcess.pid + "/stat", "r");
+                String line = reader.readLine();
+                reader.close();
+
+                String[] split = line.split("\\s+");
+
+                // utime stime cutime cstime
+                long activeTimeTicks = Long.parseLong(split[13]) + Long.parseLong(split[14]) + Long.parseLong(split[15]) +
+                        Long.parseLong(split[16]);
+                long processStartTimeTicks = Long.parseLong(split[21]);
+
+                long systemUptimeMillis = SystemClock.uptimeMillis();
+                long processUptimeTicks = (systemUptimeMillis / MILLIS_PER_CLOCK_TICK) - processStartTimeTicks;
+                long idleTimeTicks = processUptimeTicks - activeTimeTicks;
+                active += activeTimeTicks;
+                idle += idleTimeTicks;
+            } catch (Exception e) {
+                continue;
+            }
+        }
+        return new CpuInfo(active, idle);
     }
 
     static class CpuInfo {
